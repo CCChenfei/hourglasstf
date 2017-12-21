@@ -137,4 +137,4 @@ class Inference():
 
 
 if __name__ == '__main__':
-    Inference('config.cfg','4hg_195')
+    Inference('config.cfg','4hg_200')

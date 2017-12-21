@@ -59,8 +59,14 @@ class PredictProcessor():
         Args:
             config_dict	: config_dict
         """
+
         self.params = config_dict
-        self.HG = HourglassModel(nFeat=self.params['nfeats'], nStack=self.params['nstacks'], nLow=self.params['nlow'],outputDim=self.params['num_joints'],batch_size=self.params['batch_size'], drop_rate=self.params['dropout_rate'],lear_rate=self.params['learning_rate'],decay=self.params['learning_rate_decay'], decay_step=self.params['decay_step'],dataset=None, training=False,w_summary=True, logdir_test=self.params['log_dir_test'],logdir_train=self.params['log_dir_train'],name=self.params['name'], joints=self.params['joint_list'])
+        camera1 = scipy.io.loadmat(self.params['camera1'])
+        camera2 = scipy.io.loadmat(self.params['camera2'])
+        camera3 = scipy.io.loadmat(self.params['camera3'])
+        camera4 = scipy.io.loadmat(self.params['camera4'])
+        cam = [camera1, camera2, camera3, camera4]
+        self.HG = HourglassModel(nFeat=self.params['nfeats'], nStack=self.params['nstacks'], nLow=self.params['nlow'],outputDim=self.params['num_joints'],batch_size=self.params['batch_size'], drop_rate=self.params['dropout_rate'],lear_rate=self.params['learning_rate'],decay=self.params['learning_rate_decay'], decay_step=self.params['decay_step'],dataset=None, training=False,w_summary=True, logdir_test=self.params['log_dir_test'],logdir_train=self.params['log_dir_train'],name=self.params['name'], joints=self.params['joint_list'],cam=cam)
         self.graph = tf.Graph()
         #self.src = 0
         #self.cam_res = (480, 640)
@@ -210,6 +216,7 @@ class PredictProcessor():
                 self.HG.pred_final4 = self.HG.output4[:, self.HG.nStack - 1]
                 # self.HG.joint_tensor = self._create_joint_tensor(self.HG.output1[0], name='joint_tensor')
                 # self.HG.joint_tensor_final = self._create_joint_tensor(self.HG.output1[0, -1],name='joint_tensor_final')
+                self.HG.pred3D = self.HG.prob_vox
         print('Prediction Tensors Ready!')
 
     # ----------------------------PREDICTION METHODS----------------------------
@@ -296,20 +303,22 @@ class PredictProcessor():
             raise Exception
         if sess is None:
             # out1,out2,out3,out4 = self.HG.Session.run(self.HG.pred_final1, self.HG.pred_final2, self.HG.pred_final3, self.HG.pred_final4, feed_dict={self.HG.img1: np.expand_dims(img1, axis=0),self.HG.img2: np.expand_dims(img2, axis=0),self.HG.img3: np.expand_dims(img3, axis=0),self.HG.img4: np.expand_dims(img4, axis=0)})
-            out1 = self.HG.Session.run(self.HG.pred_final1, feed_dict={self.HG.img1: np.expand_dims(img1, axis=0)})
-            out2 = self.HG.Session.run(self.HG.pred_final2, feed_dict={self.HG.img2: np.expand_dims(img2, axis=0)})
-            out3 = self.HG.Session.run(self.HG.pred_final3, feed_dict={self.HG.img3: np.expand_dims(img3, axis=0)})
-            out4 = self.HG.Session.run(self.HG.pred_final4, feed_dict={self.HG.img4: np.expand_dims(img4, axis=0)})
+            # out1 = self.HG.Session.run(self.HG.pred_final1, feed_dict={self.HG.img1: np.expand_dims(img1, axis=0)})
+            # out2 = self.HG.Session.run(self.HG.pred_final2, feed_dict={self.HG.img2: np.expand_dims(img2, axis=0)})
+            # out3 = self.HG.Session.run(self.HG.pred_final3, feed_dict={self.HG.img3: np.expand_dims(img3, axis=0)})
+            # out4 = self.HG.Session.run(self.HG.pred_final4, feed_dict={self.HG.img4: np.expand_dims(img4, axis=0)})
+            out3D, out1, out2, out3, out4 = self.HG.Session.run([self.HG.pred_3D,self.HG.pred_final1,self.HG.pred_final2,self.HG.pred_final3,self.HG.pred_final4], feed_dict={self.HG.img1:np.expand_dims(img1,axis=0),self.HG.img2: np.expand_dims(img2, axis=0),self.HG.img3: np.expand_dims(img3, axis=0),self.HG.img4: np.expand_dims(img4, axis=0)})
         else:
             # out1,out2,out3,out4 = sess.run(self.HG.pred_final1, self.HG.pred_final2, self.HG.pred_final3, self.HG.pred_final4, feed_dict={self.HG.img1: np.expand_dims(img1, axis=0),self.HG.img2: np.expand_dims(img2, axis=0),self.HG.img3: np.expand_dims(img3, axis=0),self.HG.img4: np.expand_dims(img4, axis=0)})
-            out1 = sess.run(self.HG.pred_final1, feed_dict={self.HG.img1: np.expand_dims(img1, axis=0)})
-            out2 = sess.run(self.HG.pred_final2, feed_dict={self.HG.img2: np.expand_dims(img2, axis=0)})
-            out3 = sess.run(self.HG.pred_final3, feed_dict={self.HG.img3: np.expand_dims(img3, axis=0)})
-            out4 = sess.run(self.HG.pred_final4, feed_dict={self.HG.img4: np.expand_dims(img4, axis=0)})
+            # out1 = sess.run(self.HG.pred_final1, feed_dict={self.HG.img1: np.expand_dims(img1, axis=0)})
+            # out2 = sess.run(self.HG.pred_final2, feed_dict={self.HG.img2: np.expand_dims(img2, axis=0)})
+            # out3 = sess.run(self.HG.pred_final3, feed_dict={self.HG.img3: np.expand_dims(img3, axis=0)})
+            # out4 = sess.run(self.HG.pred_final4, feed_dict={self.HG.img4: np.expand_dims(img4, axis=0)})
+            out3D, out1, out2, out3, out4 = sess.run([self.HG.pred_3D, self.HG.pred_final1, self.HG.pred_final2, self.HG.pred_final3, self.HG.pred_final4],feed_dict={self.HG.img1: np.expand_dims(img1, axis=0), self.HG.img2: np.expand_dims(img2, axis=0),self.HG.img3: np.expand_dims(img3, axis=0), self.HG.img4: np.expand_dims(img4, axis=0)})
         if debug:
             print('Pred: ', time() - t, ' sec.')
         out = [out1,out2,out3,out4]
-        return out
+        return out,out3D
 
     def joints_pred(self, img, coord='hm', debug=False, sess=None):
         """ Given an Image, Returns an array with joints position
@@ -583,7 +592,7 @@ class PredictProcessor():
         datagen3.pck_ready(idlh=idlh, idrs=idrs, testSet=testSet)
         datagen4.pck_ready(idlh=idlh, idrs=idrs, testSet=testSet)
         samples = len(datagen1.pck_samples)
-        for idx in samples:
+        for idx in range(samples):
             sample1 = datagen1.pck_samples[idx]
             sample2 = datagen2.pck_samples[idx]
             sample3 = datagen3.pck_samples[idx]
@@ -596,8 +605,9 @@ class PredictProcessor():
             img2, gtJoints2, w2 = res2
             img3, gtJoints3, w3 = res3
             img4, gtJoints4, w4 = res4
-            out = self.pred_multiview(img1,img2,img3,img4)
+            out, out3D= self.pred_multiview(img1,img2,img3,img4)
             scipy.io.savemat('joints_multiview/joint'+str(idx+1)+'.mat',{'joint':out})
+            scipy.io.savemat('joints_multiview/joint3D'+str(idx+1)+'.mat',{'joint3D':out3D})
 
 # if __name__ == '__main__':
 #     t = time()

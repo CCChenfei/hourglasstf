@@ -442,7 +442,7 @@ class DataGenerator():
                     img = self.open_img(name=name,sample='train',color='RGB')
                     hm = self._generate_hm(64, 64, joints, 2, weight)
                     if self.train_3D_gt != None:
-                        hm_3D = self._generate_3D_hm(64,64,64,joints_3D,2)
+                        hm_3D = self._generate_3D_hm(64,64,64,joints_3D,4)
                     img = img.astype(np.uint8)
                     img = scm.imresize(img, (256, 256))
                     # img, hm = self._augment(img, hm)

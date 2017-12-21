@@ -166,11 +166,13 @@ class HourglassModel():
             self.proj_feat2 = self.proj_splat(self.output2[:,-1,:,:,:], camera2[0:9], camera2[9:12], camera2[12:14],camera2[14:16], camera2[16:19], camera2[19:21])
             self.proj_feat3 = self.proj_splat(self.output3[:,-1,:,:,:], camera3[0:9], camera3[9:12], camera3[12:14],camera3[14:16], camera3[16:19], camera3[19:21])
             self.proj_feat4 = self.proj_splat(self.output4[:,-1,:,:,:], camera4[0:9], camera4[9:12], camera4[12:14],camera4[14:16], camera4[16:19], camera4[19:21])
-            self.proj_feat = tf.stack([self.proj_feat1, self.proj_feat2, self.proj_feat3, self.proj_feat4],axis=1)
-            self.rnn_output, self.rnn_state = self.convgru(self.proj_feat)
+            # self.proj_feat = tf.stack([self.proj_feat1, self.proj_feat2, self.proj_feat3, self.proj_feat4],axis=1)
+            # self.rnn_output, self.rnn_state = self.convgru(self.proj_feat)
+            self.proj_feat = tf.concat([self.proj_feat1, self.proj_feat2, self.proj_feat3, self.proj_feat4], axis = 4)
+            self.pred_vox = self.grid_unet64(self.proj_feat)
         # with tf.device(self.gpu):
         #     self.pool_grid = self.collapse_dims(self.rnn_state)
-            self.pred_vox = self.grid_unet64(self.rnn_state)
+        #     self.pred_vox = self.grid_unet64(self.rnn_state)
             # self.pred_vox = self.uncollapse_dims(self.pred_vox,self.batchSize)
             self.prob_vox = tf.nn.sigmoid(self.pred_vox)
             graphTime = time.time()
@@ -318,14 +320,15 @@ class HourglassModel():
                     img_train4, gt_train4, weight_train4 = next(self.generator4)
                     # self.train_order.append(order)
                     if i % saveStep == 0:
-                        _, out1, c1, _, out2, c2, _, out3, c3, _, out4, c4, vox_out, l3D,summary = self.Session.run([self.train_rmsprop1, self.output1, self.loss1, self.train_rmsprop2, self.output2, self.loss2, self.train_rmsprop3, self.output3, self.loss3, self.train_rmsprop4, self.output4, self.loss4, self.prob_vox, self.loss_3D, self.train_op],feed_dict={self.img1: img_train1, self.gtMaps1: gt_train1, self.img2: img_train2, self.gtMaps2: gt_train2, self.img3: img_train3, self.gtMaps3: gt_train3, self.img4: img_train4, self.gtMaps4: gt_train4,self.gtMaps_3D:gt_3D})
+                        _, out1, c1, _, out2, c2, _, out3, c3, _, out4, c4, _, vox_out, l3D,summary = self.Session.run([self.train_rmsprop1, self.output1, self.loss1, self.train_rmsprop2, self.output2, self.loss2, self.train_rmsprop3, self.output3, self.loss3, self.train_rmsprop4, self.output4, self.loss4, self.train_rmsprop_3D, self.prob_vox, self.loss_3D, self.train_op],feed_dict={self.img1: img_train1, self.gtMaps1: gt_train1, self.img2: img_train2, self.gtMaps2: gt_train2, self.img3: img_train3, self.gtMaps3: gt_train3, self.img4: img_train4, self.gtMaps4: gt_train4,self.gtMaps_3D:gt_3D})
                         # Save summary (Loss + Accuracy)
                         self.train_summary.add_summary(summary, epoch * epochSize + i)
                         self.train_summary.flush()
 
-                    else:
-                        _, out1, c1, _, out2, c2, _, out3, c3, _, out4, c4, vox_out, l3D= self.Session.run([self.train_rmsprop1, self.output1, self.loss1, self.train_rmsprop2, self.output2, self.loss2, self.train_rmsprop3, self.output3, self.loss3, self.train_rmsprop4, self.output4, self.loss4, self.prob_vox, self.loss_3D],feed_dict={self.img1: img_train1, self.gtMaps1: gt_train1, self.img2: img_train2, self.gtMaps2: gt_train2, self.img3: img_train3, self.gtMaps3: gt_train3, self.img4: img_train4, self.gtMaps4: gt_train4,self.gtMaps_3D:gt_3D})
 
+                    else:
+                        _, out1, c1, _, out2, c2, _, out3, c3, _, out4, c4, _, vox_out, l3D= self.Session.run([self.train_rmsprop1, self.output1, self.loss1, self.train_rmsprop2, self.output2, self.loss2, self.train_rmsprop3, self.output3, self.loss3, self.train_rmsprop4, self.output4, self.loss4, self.train_rmsprop_3D, self.prob_vox, self.loss_3D],feed_dict={self.img1: img_train1, self.gtMaps1: gt_train1, self.img2: img_train2, self.gtMaps2: gt_train2, self.img3: img_train3, self.gtMaps3: gt_train3, self.img4: img_train4, self.gtMaps4: gt_train4,self.gtMaps_3D:gt_3D})
+                        # scipy.io.savemat('3D_heatmap.mat',{'heatmap':vox_out})
 
                     # for i in range(self.batchSize):
                     #     scipy.io.savemat('fmap/' + order[i] + '.mat', {'fmap': out[i, self.nStack - 1]})
@@ -705,7 +708,9 @@ class HourglassModel():
 
     def proj_splat(self, feats, R, T, f, c, k, p):
         # KRcam = tf.matmul(K, Rcam)
-        Rcam = np.array([[R[0],R[1],R[2],T[0]],[R[3],R[4],R[5],T[1]],[R[6],R[7],R[8],T[2]],[0,0,0,1]])
+        Rcam = np.array([[R[0],R[1],R[2]],[R[3],R[4],R[5]],[R[6],R[7],R[8]]])
+        Tcam = np.array([[T[0]],[T[1]],[T[2]]])
+
         with tf.variable_scope('ProjSplat'):
             nR, fh, fw, fdim = feats.get_shape().as_list()
             rsz_h = float(fh) / 256
@@ -717,27 +722,47 @@ class HourglassModel():
                 self.grid = tf.stack(tf.meshgrid(grid_range, grid_range, grid_range))
                 self.rs_grid = tf.reshape(self.grid, [3, -1])
                 nV = self.rs_grid.get_shape().as_list()[1]
-                self.rs_grid = tf.concat([self.rs_grid, tf.ones([1, nV])], axis=0)
+                # self.rs_grid = tf.concat([self.rs_grid, tf.ones([1, nV])], axis=0)
 
             # Project grid
             with tf.name_scope('World2Cam'):
                 Rcam = tf.cast(Rcam,'float32')
-                p_cam = tf.matmul(Rcam, self.rs_grid)
+                Tcam = tf.cast(Tcam,'float32')
+                temp_p = self.rs_grid - tf.tile(Tcam,[1,nV])
+                p_cam = tf.matmul(Rcam, temp_p)
+                # p_cam = tf.matmul(Rcam, self.rs_grid)
                 x_cam, y_cam, z_cam = p_cam[0,:], p_cam[1,:], p_cam[2,:]
                 x_cam = x_cam / z_cam
                 y_cam = y_cam / z_cam
                 r2 = x_cam**2 + y_cam**2
-                x = x_cam * (1+(k[0]*r2)+(r2**2*k[1])+(r2**3*k[2])) + 2*p[0]*x_cam*y_cam+p[1]*(r2+2*x_cam**2)
-                y = y_cam * (1+(k[0]*r2)+(r2**2*k[1])+(r2**3*k[2])) + 2*p[1]*x_cam*y_cam+p[0]*(r2+2*y_cam**2)
+                # r2 = tf.square(x_cam) + tf.square(y_cam)
+                # r4 = tf.square(r2)
+                r4 = r2**2
+                r6 = tf.pow(r2,3)
+                r_temp = tf.stack([r2,r4,r6],axis=0)
+                k_temp = np.array([[k[0]],[k[1]],[k[2]]])
+                k_temp = tf.tile(k_temp,[1,nV])
+                k_temp = tf.cast(k_temp,tf.float32)
+                rad_temp = r_temp*k_temp
+                rad_temp = tf.reduce_sum(rad_temp,axis=0)
+                radial = 1+rad_temp
+                tan = p[0]*y_cam + p[1]*x_cam
+                x = x_cam*(radial + tan) + p[1]*r2
+                y = y_cam*(radial + tan) + p[0]*r2
+                # x = x_cam * (1+(k[0]*r2)+(r2**2*k[1])+(r2**3*k[2])) + 2*p[0]*x_cam*y_cam+p[1]*(r2+2*x_cam**2)
+                # y = y_cam * (1+(k[0]*r2)+(r2**2*k[1])+(r2**3*k[2])) + 2*p[1]*x_cam*y_cam+p[0]*(r2+2*y_cam**2)
                 im_x = f[0]*x + c[0]
                 im_y = f[1]*y + c[1]
-
+                # tf.Print(im_x,'im_x')
+                # tf.Print(im_y,'im_y')
+                
                 # im_p = tf.matmul(tf.reshape(KRcam, [-1, 4]), self.rs_grid)
                 # im_x, im_y, im_z = im_p[0, :], im_p[1, :], im_p[2, :]
                 im_x = im_x * rsz_w
                 im_y = im_y * rsz_h
+                im_z = (z_cam-743.728)/7424.202
                 # self.im_p, self.im_x, self.im_y, self.im_z = im_p, im_x, im_y, im_z
-                self.im_x, self.im_y, self.im_z = im_x, im_y, z_cam
+                self.im_x, self.im_y, self.im_z = im_x, im_y, im_z
 
             # Bilinear interpolation
             with tf.name_scope('BilinearInterp'):
@@ -795,7 +820,7 @@ class HourglassModel():
                     [Ibilin, tf.reshape(self.im_z, [nV * self.batchSize, 1])], axis=1)
                 fdim = Ibilin.get_shape().as_list()[-1]
                 self.Ibilin = tf.reshape(Ibilin, [self.batchSize, 64,64,64,fdim])
-                self.Ibilin = tf.transpose(self.Ibilin, [0, 2, 3, 1, 4])
+                self.Ibilin = tf.transpose(self.Ibilin, [0, 2, 1, 3, 4])
         return self.Ibilin
 
 
@@ -866,6 +891,19 @@ class HourglassModel():
             self.grid_net['out'] = final_vol
 
         return final_vol
+
+    def fuse_net(self,vol):
+        n,h,w,d,ch = vol.get_shape().as_list()
+        with tf.variable_scope("fuse_net"):
+            conv1 = self.conv3d('conv1',vol,4,32,activation=None,norm='BN',mode='TRAIN')
+            conv2 = self.conv3d('conv2', conv1, 4, 64, norm='BN', mode='TRAIN')
+            conv3 = self.conv3d('conv3', conv2, 4, 128, norm='BN', mode='TRAIN')
+            conv4 = self.conv3d('conv4', conv3, 4, 256, norm='BN', mode='TRAIN')
+            conv5 = self.conv3d('conv5', conv4, 4, 128, norm='BN', mode='TRAIN')
+            conv6 = self.conv3d('conv6', conv5, 4, 64, norm='BN', mode='TRAIN')
+            conv7 = self.conv3d('conv7', conv6, 4, 32, norm='BN', mode='TRAIN')
+            conv8 = self.conv3d('conv8', conv7, 4, 14, stride=1,norm=None, mode='TRAIN')
+        return conv8
 
     def conv3d(self,name,X,fsize,ch,stride=2,norm=None,padding="SAME",activation=tf.nn.relu,mode="TRAIN"):
         bs, h, w, d, in_ch = X.get_shape().as_list()
